@@ -1,0 +1,621 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap');
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;font-size:13px;line-height:1.5;color:#0F172A;background:#F8FAFC;-webkit-font-smoothing:antialiased}
+a{text-decoration:none;color:inherit;cursor:pointer}
+button{font-family:inherit;cursor:pointer;border:none;background:none}
+input,select,textarea{font-family:inherit}
+table{border-collapse:collapse}
+
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:#F1F5F9}
+::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#94A3B8}
+
+/* Smooth Page Transition to prevent route navigation blinking */
+.page-transition {
+  animation: pageFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes pageFadeIn {
+  from {
+    opacity: 0.2;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── Skeleton Loading Pulse & Shimmer Animations ── */
+@keyframes shimmerPulse {
+  0% {
+    background-color: #F1F5F9;
+    opacity: 0.65;
+  }
+  50% {
+    background-color: #E2E8F0;
+    opacity: 1;
+  }
+  100% {
+    background-color: #F1F5F9;
+    opacity: 0.65;
+  }
+}
+
+.skeleton-box {
+  display: inline-block;
+  height: 14px;
+  border-radius: 6px;
+  background-color: #E2E8F0;
+  animation: shimmerPulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-circle {
+  display: inline-block;
+  border-radius: 50%;
+  background-color: #E2E8F0;
+  animation: shimmerPulse 1.5s ease-in-out infinite;
+}
+
+/* ── Smooth Table Row Fade In ── */
+@keyframes rowFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.table-row-fade {
+  animation: rowFadeIn 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: opacity, transform;
+}
+
+/* ── Evegah Brand Design Tokens & CSS Variables ── */
+:root {
+  --ev-brand-primary: #2A195C;
+  --ev-brand-primary-hover: #1e1144;
+  --ev-brand-primary-light: #f5f3ff;
+  --ev-brand-primary-border: #ddd6fe;
+
+  --ev-accent-emerald: #10B981;
+  --ev-accent-amber: #F59E0B;
+  --ev-accent-rose: #EF4444;
+  --ev-accent-sky: #0EA5E9;
+  --ev-accent-indigo: #6366F1;
+
+  --ev-neutral-50: #F8FAFC;
+  --ev-neutral-100: #F1F5F9;
+  --ev-neutral-200: #E2E8F0;
+  --ev-neutral-300: #CBD5E1;
+  --ev-neutral-400: #94A3B8;
+  --ev-neutral-500: #64748B;
+  --ev-neutral-600: #475569;
+  --ev-neutral-700: #334155;
+  --ev-neutral-800: #1E293B;
+  --ev-neutral-900: #0F172A;
+
+  --ev-sidebar-width: 240px;
+  --ev-sidebar-collapsed-width: 72px;
+  --ev-topbar-height: 70px;
+  --ev-radius-sm: 6px;
+  --ev-radius-md: 10px;
+  --ev-radius-lg: 14px;
+  --ev-radius-xl: 16px;
+
+  --ev-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --ev-shadow-dropdown: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --ev-focus-ring: 0 0 0 3px rgba(42, 25, 92, 0.18);
+}
+
+/* ── Global Sidebar Fixed & Hidden Scrollbar Integration ── */
+.ev-sb {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  bottom: 0 !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-height: 100vh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+  z-index: 1000 !important;
+}
+
+.ev-sb-nav {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE / Edge */
+}
+.ev-sb-nav::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Main content sibling alignment adhering to standardized sidebar width */
+.ev-sb:not(.collapsed) + div,
+.ev-sb:not(.collapsed) + main,
+.ev-sb:not(.collapsed) ~ div[class*="-main"],
+.ev-sb:not(.collapsed) ~ main[class*="-main"],
+.ev-sb:not(.collapsed) ~ div {
+  margin-left: var(--ev-sidebar-width, 240px) !important;
+  width: calc(100% - var(--ev-sidebar-width, 240px)) !important;
+  flex: 1 1 0% !important;
+  min-width: 0 !important;
+}
+
+.ev-sb.collapsed + div,
+.ev-sb.collapsed + main,
+.ev-sb.collapsed ~ div[class*="-main"],
+.ev-sb.collapsed ~ main[class*="-main"],
+.ev-sb.collapsed ~ div {
+  margin-left: var(--ev-sidebar-collapsed-width, 72px) !important;
+  width: calc(100% - var(--ev-sidebar-collapsed-width, 72px)) !important;
+  flex: 1 1 0% !important;
+  min-width: 0 !important;
+}
+
+/* ── Standardized Table & Card Utilities ── */
+.ev-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  background: #ffffff;
+  border: 1px solid var(--ev-neutral-200);
+  border-radius: var(--ev-radius-lg);
+  box-shadow: var(--ev-shadow-card);
+}
+
+.ev-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.ev-table th {
+  background: #F8FAFC;
+  color: var(--ev-neutral-600);
+  font-weight: 700;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ev-neutral-200);
+  white-space: nowrap;
+}
+
+.ev-table td {
+  padding: 13px 16px;
+  border-bottom: 1px solid #F1F5F9;
+  color: var(--ev-neutral-800);
+  vertical-align: middle;
+}
+
+.ev-table tr:hover td {
+  background: #F8FAFC;
+}
+
+/* ── Standardized Badges ── */
+.ev-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.ev-badge-success { background: #ECFDF5; color: #047857; }
+.ev-badge-warning { background: #FFFBEB; color: #B45309; }
+.ev-badge-danger { background: #FEF2F2; color: #B91C1C; }
+.ev-badge-info { background: #EFF6FF; color: #1D4ED8; }
+.ev-badge-purple { background: #F5F3FF; color: var(--ev-brand-primary); }
+.ev-badge-neutral { background: #F1F5F9; color: var(--ev-neutral-600); }
+
+/* ── Standardized Primary Action Button ── */
+.ev-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--ev-brand-primary);
+  color: #ffffff;
+  padding: 9px 18px;
+  border-radius: var(--ev-radius-md);
+  font-weight: 700;
+  font-size: 13px;
+  border: 1px solid var(--ev-brand-primary);
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+
+.ev-btn-primary:hover {
+  background: var(--ev-brand-primary-hover);
+  border-color: var(--ev-brand-primary-hover);
+}
+
+.ev-btn-primary:focus-visible {
+  outline: none;
+  box-shadow: var(--ev-focus-ring);
+}
+
+
+
+
+/* ── Standardized Secondary & Destructive Action Buttons ── */
+.ev-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #ffffff;
+  color: var(--ev-neutral-700);
+  padding: 9px 18px;
+  border-radius: var(--ev-radius-md);
+  font-weight: 600;
+  font-size: 13px;
+  border: 1px solid var(--ev-neutral-300);
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+
+.ev-btn-secondary:hover {
+  background: var(--ev-neutral-50);
+  border-color: var(--ev-neutral-400);
+}
+
+.ev-btn-secondary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.18);
+}
+
+.ev-btn-destructive {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--ev-accent-rose);
+  color: #ffffff;
+  padding: 9px 18px;
+  border-radius: var(--ev-radius-md);
+  font-weight: 700;
+  font-size: 13px;
+  border: 1px solid var(--ev-accent-rose);
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+
+.ev-btn-destructive:hover {
+  background: #DC2626;
+  border-color: #DC2626;
+}
+
+.ev-btn-destructive:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.18);
+}
+
+/* ── Standardized Inputs & Search Fields ── */
+.ev-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--ev-neutral-300);
+  border-radius: var(--ev-radius-md);
+  font-size: 13px;
+  color: var(--ev-neutral-900);
+  background: #ffffff;
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.ev-input::placeholder {
+  color: var(--ev-neutral-400);
+}
+
+.ev-input:hover {
+  border-color: var(--ev-neutral-400);
+}
+
+.ev-input:focus {
+  border-color: var(--ev-brand-primary);
+  box-shadow: var(--ev-focus-ring);
+}
+
+.ev-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.ev-search-wrap svg {
+  position: absolute;
+  left: 14px;
+  color: var(--ev-neutral-400);
+  width: 16px;
+  height: 16px;
+}
+
+.ev-search-wrap .ev-input {
+  padding-left: 38px;
+}
+
+/* ── Standardized Dialogs (Modals) ── */
+.ev-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: pageFadeIn 0.15s ease-out forwards;
+}
+
+.ev-dialog {
+  background: #ffffff;
+  border-radius: var(--ev-radius-xl);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  transform: translateY(10px);
+  animation: rowFadeIn 0.2s ease-out forwards;
+}
+
+.ev-dialog-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--ev-neutral-200);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ev-dialog-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ev-neutral-900);
+}
+
+.ev-dialog-close {
+  color: var(--ev-neutral-500);
+  transition: color 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+}
+.ev-dialog-close:hover {
+  color: var(--ev-neutral-900);
+  background: var(--ev-neutral-100);
+}
+
+.ev-dialog-body {
+  padding: 24px;
+}
+
+.ev-dialog-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--ev-neutral-200);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  background: var(--ev-neutral-50);
+  border-bottom-left-radius: var(--ev-radius-xl);
+  border-bottom-right-radius: var(--ev-radius-xl);
+}
+
+/* ── Standardized Empty & Error States ── */
+.ev-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  background: #ffffff;
+  border-radius: var(--ev-radius-lg);
+  border: 1px dashed var(--ev-neutral-300);
+}
+
+.ev-empty-icon {
+  width: 48px;
+  height: 48px;
+  color: var(--ev-neutral-400);
+  margin-bottom: 16px;
+  background: var(--ev-neutral-100);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ev-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ev-neutral-800);
+  margin-bottom: 6px;
+}
+
+.ev-empty-desc {
+  font-size: 13px;
+  color: var(--ev-neutral-500);
+  max-width: 320px;
+  margin-bottom: 20px;
+}
+
+/* ── Standardized Pagination ── */
+.ev-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-top: 1px solid var(--ev-neutral-200);
+  background: #ffffff;
+}
+
+.ev-pagination-info {
+  font-size: 13px;
+  color: var(--ev-neutral-500);
+}
+
+.ev-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ev-page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ev-neutral-600);
+  background: transparent;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.ev-page-btn:hover:not(:disabled) {
+  background: var(--ev-neutral-100);
+  color: var(--ev-neutral-900);
+}
+
+.ev-page-btn.active {
+  background: var(--ev-brand-primary-light);
+  color: var(--ev-brand-primary);
+  font-weight: 700;
+}
+
+.ev-page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   EVEGAH STANDARDIZED KPI CARDS & GRIDS (PHASE D)
+   ═══════════════════════════════════════════════════════════════════════ */
+.ev-kpi-grid-5 {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 1200px) {
+  .ev-kpi-grid-5 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .ev-kpi-grid-5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .ev-kpi-grid-5 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ev-kpi-card {
+  background: #ffffff;
+  border: 1px solid var(--ev-neutral-200);
+  border-radius: var(--ev-radius-lg);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 124px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.ev-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.04);
+  border-color: var(--ev-neutral-300);
+}
+
+.ev-kpi-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ev-kpi-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ev-neutral-500);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+}
+
+.ev-kpi-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.ev-kpi-val {
+  font-size: 24px;
+  font-weight: 800;
+  font-family: 'Outfit', sans-serif;
+  color: var(--ev-neutral-900);
+  margin: 10px 0 4px;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.ev-kpi-bottom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  min-height: 16px;
+}
+
+.ev-kpi-trend-up {
+  color: #10B981;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ev-kpi-trend-dn {
+  color: #EF4444;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ev-kpi-subtext {
+  color: var(--ev-neutral-400);
+  font-weight: 500;
+}
