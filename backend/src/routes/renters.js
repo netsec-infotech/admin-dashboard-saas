@@ -2294,4 +2294,211 @@ router.post('/migrate-vps-riders', async (req, res) => {
   }
 });
 
+// ─── KYC-01: Admin document review with reason + audit ───
+router.get('/kyc/queue', async (req, res) => {
+  try {
+    const statusFilter = req.query.status || 'Under Review';
+    let rows = [];
+    try {
+      const result = await db.query(
+        `
+        SELECT id, rider_name, mobile, kyc_status, avatar_url, aadhaar_number, created_at,
+               kyc_rejection_reason, kyc_reviewed_by, kyc_reviewed_at
+        FROM renters
+        WHERE ($1 = 'all' OR LOWER(COALESCE(kyc_status,'')) = LOWER($1) OR ($1 = 'Under Review' AND LOWER(COALESCE(kyc_status,'')) IN ('under review','pending','submitted')))
+        ORDER BY created_at DESC
+        LIMIT 100
+        `,
+        [statusFilter]
+      );
+      rows = result.rows;
+    } catch (_) {
+      const result = await db.query(
+        `SELECT id, rider_name, mobile, kyc_status, avatar_url, aadhaar_number, created_at
+         FROM renters ORDER BY created_at DESC LIMIT 50`
+      );
+      rows = result.rows;
+    }
+    res.json({ status: 'success', data: rows });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+router.post('/kyc/review', async (req, res) => {
+  try {
+    const { mobile, decision, reason } = req.body || {};
+    const last10 = String(mobile || '').replace(/\D/g, '').slice(-10);
+    if (last10.length !== 10) {
+      return res.status(400).json({ status: 'error', message: 'Valid 10-digit mobile required' });
+    }
+    const normalized = String(decision || '').toLowerCase();
+    if (!['approve', 'approved', 'reject', 'rejected'].includes(normalized)) {
+      return res.status(400).json({ status: 'error', message: 'decision must be approve or reject' });
+    }
+    const isReject = normalized.startsWith('reject');
+    if (isReject && !reason) {
+      return res.status(400).json({ status: 'error', message: 'Rejection reason is required' });
+    }
+    const newStatus = isReject ? 'Rejected' : 'Verified';
+    const reviewer = req.headers['x-user-mobile'] || req.body.reviewer || 'admin';
+
+    await db.query(`ALTER TABLE renters ADD COLUMN IF NOT EXISTS kyc_rejection_reason TEXT`).catch(() => {});
+    await db.query(`ALTER TABLE renters ADD COLUMN IF NOT EXISTS kyc_reviewed_by VARCHAR(150)`).catch(() => {});
+    await db.query(`ALTER TABLE renters ADD COLUMN IF NOT EXISTS kyc_reviewed_at TIMESTAMPTZ`).catch(() => {});
+
+    const result = await db.query(
+      `
+      UPDATE renters
+      SET kyc_status = $1,
+          kyc_rejection_reason = $2,
+          kyc_reviewed_by = $3,
+          kyc_reviewed_at = NOW()
+      WHERE mobile LIKE $4
+      RETURNING id, rider_name, mobile, kyc_status, kyc_rejection_reason, kyc_reviewed_by, kyc_reviewed_at
+      `,
+      [newStatus, isReject ? reason : null, reviewer, `%${last10}`]
+    );
+
+    if (RIDER_KYC_STORE[last10]) {
+      RIDER_KYC_STORE[last10].kyc_status = newStatus;
+      RIDER_KYC_STORE[last10].rejection_reason = isReject ? reason : null;
+    }
+
+    try {
+      const { writeAudit } = require('../utils/auditHelper');
+      await writeAudit({
+        req,
+        action: isReject ? 'KYC_REJECT' : 'KYC_APPROVE',
+        module: 'KYC',
+        entity_type: 'rider',
+        entity_id: last10,
+        details: { decision: newStatus, reason: reason || null, reviewer },
+        outcome: 'success',
+      });
+    } catch (_) {}
+
+    res.json({
+      status: 'success',
+      message: isReject
+        ? 'KYC rejected. Rider can be prompted to re-upload.'
+        : 'KYC approved.',
+      data: result.rows[0] || { mobile: last10, kyc_status: newStatus, reason },
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// ─── KYC-03: Rider restriction / block with reason tags ───
+router.post('/:id/restrictions', async (req, res) => {
+  try {
+    const { action = 'restrict', reason_tag, notes } = req.body || {};
+    const allowed = ['non_payment', 'vehicle_abandonment', 'unsafe_driving', 'other'];
+    if (!allowed.includes(String(reason_tag || ''))) {
+      return res.status(400).json({
+        status: 'error',
+        message: `reason_tag must be one of: ${allowed.join(', ')}`,
+      });
+    }
+    await db.query(`ALTER TABLE renters ADD COLUMN IF NOT EXISTS restriction_reason VARCHAR(80)`).catch(() => {});
+    await db.query(`ALTER TABLE renters ADD COLUMN IF NOT EXISTS restriction_notes TEXT`).catch(() => {});
+    await db.query(`ALTER TABLE renters ADD COLUMN IF NOT EXISTS restricted_at TIMESTAMPTZ`).catch(() => {});
+
+    const isClear = String(action).toLowerCase() === 'clear';
+    const result = await db.query(
+      `
+      UPDATE renters
+      SET status = $1,
+          restriction_reason = $2,
+          restriction_notes = $3,
+          restricted_at = CASE WHEN $4 THEN NULL ELSE NOW() END
+      WHERE id::text = $5 OR mobile LIKE $6
+      RETURNING id, rider_name, mobile, status, restriction_reason, restriction_notes, restricted_at
+      `,
+      [
+        isClear ? 'Active' : 'Suspended',
+        isClear ? null : reason_tag,
+        isClear ? null : (notes || null),
+        isClear,
+        String(req.params.id),
+        `%${String(req.params.id).replace(/\D/g, '').slice(-10)}%`,
+      ]
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ status: 'error', message: 'Rider not found' });
+    }
+    try {
+      const { writeAudit } = require('../utils/auditHelper');
+      await writeAudit({
+        req,
+        action: isClear ? 'RIDER_RESTRICTION_CLEAR' : 'RIDER_RESTRICT',
+        module: 'KYC',
+        entity_type: 'rider',
+        entity_id: req.params.id,
+        details: result.rows[0],
+        outcome: 'success',
+      });
+    } catch (_) {}
+    res.json({ status: 'success', data: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// KYC-02: Rider 360 consolidated profile
+router.get('/:id/360', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const riderRes = await db.query(
+      `SELECT * FROM renters WHERE id::text = $1 OR mobile LIKE $2 ORDER BY id DESC LIMIT 1`,
+      [id, `%${String(id).replace(/\D/g, '').slice(-10)}%`]
+    );
+    if (!riderRes.rows.length) {
+      return res.status(404).json({ status: 'error', message: 'Rider not found' });
+    }
+    const rider = riderRes.rows[0];
+    let wallet = { balance: 0, deposit: rider.deposit || 0, ledger: [] };
+    try {
+      const w = await db.query(
+        `SELECT * FROM wallet_transactions WHERE mobile LIKE $1 ORDER BY created_at DESC LIMIT 20`,
+        [`%${String(rider.mobile || '').slice(-10)}%`]
+      );
+      wallet.ledger = w.rows;
+    } catch (_) {}
+    let rides = [];
+    try {
+      const r = await db.query(
+        `SELECT id, status, vehicle_number, amount, created_at FROM reservations WHERE mobile LIKE $1 ORDER BY created_at DESC LIMIT 20`,
+        [`%${String(rider.mobile || '').slice(-10)}%`]
+      );
+      rides = r.rows;
+    } catch (_) {}
+    res.json({
+      status: 'success',
+      data: {
+        rider,
+        current_ride: rides.find((x) => /active|ongoing|in ride/i.test(x.status || '')) || null,
+        wallet,
+        lifetime: {
+          ride_count: rides.length,
+          distance_km: Number(rider.total_distance || 0),
+          penalties: rider.penalty_history || [],
+        },
+        documents: {
+          kyc_status: rider.kyc_status,
+          reupload_available: String(rider.kyc_status || '').toLowerCase() === 'rejected',
+        },
+        restriction: {
+          status: rider.status,
+          reason: rider.restriction_reason || null,
+          notes: rider.restriction_notes || null,
+        },
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
 module.exports = router;

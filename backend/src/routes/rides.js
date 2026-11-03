@@ -351,9 +351,92 @@ router.post('/return', async (req, res) => {
       notes,
       damage_detected,
       damage_cost,
-      damage_category
+      damage_category,
+      // RIDE-01 inspection fields
+      odometer_end,
+      soc_end,
+      photos,
+      gps,
+      line_items,
+      overdue_minutes,
+      gps_distance_km,
+      correction_note,
     } = req.body;
     const cleanMob = (mobile || '').replace(/\D/g, '').slice(-10);
+
+    // Persist return inspection for audit/charge review
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS return_inspections (
+        id SERIAL PRIMARY KEY,
+        mobile VARCHAR(20),
+        vehicle_id VARCHAR(100),
+        odometer_end DECIMAL(12,2),
+        soc_end INT,
+        gps_lat DECIMAL(10,7),
+        gps_lng DECIMAL(10,7),
+        gps_distance_km DECIMAL(12,2),
+        gps_sanity VARCHAR(40),
+        photos JSONB DEFAULT '[]',
+        line_items JSONB DEFAULT '[]',
+        overdue_minutes INT DEFAULT 0,
+        overdue_charge DECIMAL(12,2) DEFAULT 0,
+        damage_charge DECIMAL(12,2) DEFAULT 0,
+        total_charges DECIMAL(12,2) DEFAULT 0,
+        correction_note TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `).catch(() => {});
+
+    const odEnd = odometer_end != null ? Number(odometer_end) : null;
+    const soc = soc_end != null ? Number(soc_end) : null;
+    const gpsDist = gps_distance_km != null ? Number(gps_distance_km) : null;
+    let gpsSanity = 'ok';
+    if (odEnd != null && gpsDist != null) {
+      const delta = Math.abs(odEnd - gpsDist);
+      if (gpsDist > 0 && delta / Math.max(gpsDist, 1) > 0.35) {
+        gpsSanity = 'implausible';
+      }
+    }
+    const overdueMins = Number(overdue_minutes || 0);
+    // Hourly overdue assessment — idempotent per request payload
+    const overdueCharge = Number(((Math.ceil(overdueMins / 60) || 0) * 50).toFixed(2));
+    const damageCharge = Number(parseFloat(damage_cost) || 0);
+    const items = Array.isArray(line_items) && line_items.length
+      ? line_items
+      : [
+          ...(overdueCharge ? [{ code: 'overdue', label: 'Overdue rental', amount: overdueCharge, interval_minutes: overdueMins }] : []),
+          ...(damageCharge ? [{ code: 'damage', label: damage_category || 'Damage', amount: damageCharge }] : []),
+        ];
+    const totalCharges = items.reduce((s, i) => s + Number(i.amount || 0), 0);
+
+    const inspection = await db.query(
+      `
+      INSERT INTO return_inspections (
+        mobile, vehicle_id, odometer_end, soc_end, gps_lat, gps_lng, gps_distance_km,
+        gps_sanity, photos, line_items, overdue_minutes, overdue_charge, damage_charge,
+        total_charges, correction_note
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      RETURNING *
+      `,
+      [
+        cleanMob || null,
+        vehicle_id || null,
+        odEnd,
+        soc,
+        gps?.lat ?? null,
+        gps?.lng ?? null,
+        gpsDist,
+        gpsSanity,
+        JSON.stringify(photos || []),
+        JSON.stringify(items),
+        overdueMins,
+        overdueCharge,
+        damageCharge,
+        totalCharges,
+        correction_note || null,
+      ]
+    ).catch(() => ({ rows: [] }));
+
 
     const isDamaged = Boolean(
       damage_detected === true ||
@@ -500,7 +583,15 @@ router.post('/return', async (req, res) => {
         status: 'Return',
         vehicle_status: isDamaged ? 'Maintenance' : 'Available',
         deposit_status: finalRefundDeposit > 0 ? 'Pending_Refund' : 'None',
-        refund_deposit: finalRefundDeposit
+        refund_deposit: finalRefundDeposit,
+        inspection: inspection?.rows?.[0] || null,
+        charges: {
+          line_items: items,
+          overdue_charge: overdueCharge,
+          damage_charge: damageCharge,
+          total_charges: totalCharges,
+          gps_sanity: gpsSanity,
+        },
       }
     });
   } catch (err) {

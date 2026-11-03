@@ -213,13 +213,31 @@ router.get('/', async (req, res) => {
       });
     } catch (_) {}
 
+    let assignedCountsMap = {};
+    try {
+      const assignedRes = await db.query('SELECT zone, COUNT(*)::int as count FROM vehicles GROUP BY zone');
+      assignedRes.rows.forEach(r => {
+        if (r.zone) assignedCountsMap[r.zone.trim().toLowerCase()] = r.count;
+      });
+    } catch (_) {}
+
     finalData = finalData.map(z => {
       const zNameKey = (z.name || '').trim().toLowerCase();
       const bikeCount = bikeCountsMap[zNameKey] || 0;
+      const assigned = assignedCountsMap[zNameKey] || bikeCount;
+      const capacity = Number(z.max_vehicles || 0);
+      const utilization = capacity > 0 ? Math.round((assigned / capacity) * 100) : null;
+      const overCapacity = capacity > 0 && assigned > capacity;
       return {
         ...z,
         bike_count: bikeCount,
-        available_vehicles: bikeCount
+        available_vehicles: bikeCount,
+        // ZONE-03 capacity meter
+        assigned_vehicles: assigned,
+        capacity,
+        capacity_utilization_pct: utilization,
+        capacity_alert: overCapacity,
+        capacity_data_time: new Date().toISOString(),
       };
     });
 

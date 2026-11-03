@@ -1070,6 +1070,89 @@ router.delete(
 // There is NO MOCK_VEHICLES fallback.
 // ============================================================
 
+// FLEET-01 — Live telemetry snapshot with online/stale/offline connectivity
+router.get('/telemetry', async (req, res) => {
+  try {
+    const staleMinutes = Number(req.query.stale_minutes || 5);
+    const offlineMinutes = Number(req.query.offline_minutes || 30);
+    const { zone, status } = req.query;
+    let query = `
+      SELECT code, registration_number, zone, vehicle_status, vehicle_model, evegah_model_name,
+             lat, lng, battery_pct, speed, last_seen, created_at
+      FROM vehicles WHERE 1=1
+    `;
+    const params = [];
+    if (zone && String(zone).toLowerCase() !== 'all') {
+      params.push(`%${zone}%`);
+      query += ` AND zone ILIKE $${params.length}`;
+    }
+    if (status && String(status).toLowerCase() !== 'all') {
+      params.push(status);
+      query += ` AND vehicle_status ILIKE $${params.length}`;
+    }
+    query += ' ORDER BY code LIMIT 2000';
+    const result = await db.query(query, params);
+    const now = Date.now();
+    const data = result.rows.map((v) => {
+      const last = v.last_seen || v.created_at;
+      const ageMin = last ? (now - new Date(last).getTime()) / 60000 : 9999;
+      let connectivity = 'online';
+      if (ageMin >= offlineMinutes || String(v.vehicle_status || '').toLowerCase() === 'offline') {
+        connectivity = 'offline';
+      } else if (ageMin >= staleMinutes) {
+        connectivity = 'stale';
+      }
+      return {
+        ...v,
+        operating_state: v.vehicle_status,
+        speed_kmh: v.speed != null ? Number(v.speed) : null,
+        soc: v.battery_pct != null ? Number(v.battery_pct) : null,
+        last_update: last,
+        connectivity,
+        telemetry_age_minutes: Number(ageMin.toFixed(1)),
+      };
+    });
+    res.json({
+      status: 'success',
+      data,
+      freshness: { stale_minutes: staleMinutes, offline_minutes: offlineMinutes },
+      generated_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// FLEET-04 — Scoped fleet export (CSV)
+router.get('/export', async (req, res) => {
+  try {
+    const { zone, status } = req.query;
+    let query = 'SELECT code, registration_number, zone, vehicle_status, vehicle_model, evegah_model_name, battery_pct, lat, lng, last_seen FROM vehicles WHERE 1=1';
+    const params = [];
+    if (zone) {
+      params.push(`%${zone}%`);
+      query += ` AND zone ILIKE $${params.length}`;
+    }
+    if (status) {
+      params.push(status);
+      query += ` AND vehicle_status ILIKE $${params.length}`;
+    }
+    query += ' ORDER BY code';
+    const result = await db.query(query, params);
+    const header = 'code,registration_number,zone,vehicle_status,model,battery_pct,lat,lng,last_seen\n';
+    const lines = result.rows.map((r) =>
+      [r.code, r.registration_number, r.zone, r.vehicle_status, r.evegah_model_name || r.vehicle_model, r.battery_pct, r.lat, r.lng, r.last_seen]
+        .map((x) => `"${String(x ?? '').replace(/"/g, '""')}"`)
+        .join(',')
+    );
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="fleet-export.csv"');
+    res.send(header + lines.join('\n'));
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
 router.get('/', async (req, res) => {
   const {
     zone,

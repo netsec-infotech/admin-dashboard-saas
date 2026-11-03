@@ -700,6 +700,11 @@ function VehicleDetailContent() {
   const [isLocked, setIsLocked] = useState(true);
   const [isImmobilized, setIsImmobilized] = useState(false);
   const [isBuzzerActive, setIsBuzzerActive] = useState(false);
+  const [remoteModal, setRemoteModal] = useState<{ action: string; label: string } | null>(null);
+  const [confirmToken, setConfirmToken] = useState('');
+  const [operatorPin, setOperatorPin] = useState('');
+  const [remoteBusy, setRemoteBusy] = useState(false);
+  const [remoteResult, setRemoteResult] = useState('');
 
   // Change Zone modal state
   const [isZoneModalOpen, setIsZoneModalOpen] = useState(false);
@@ -1129,22 +1134,25 @@ function VehicleDetailContent() {
                   </div>
                   <div className="vd-card-body">
                     <div className="vd-action-grid">
-                      <button 
+                      <button
                         className={`vd-act-btn ${isLocked ? 'active' : ''}`}
                         onClick={() => {
-                          setIsLocked(!isLocked);
-                          triggerToast(isLocked ? 'Vehicle Unlocked remotely' : 'Vehicle Locked remotely');
+                          const next = isLocked ? 'unlock' : 'lock';
+                          setRemoteResult('');
+                          setOperatorPin('');
+                          setConfirmToken('');
+                          setRemoteModal({ action: next, label: next === 'lock' ? 'Smart Lock' : 'Smart Unlock' });
                         }}
                       >
                         {isLocked ? <ILock /> : <IUnlock />}
                         {isLocked ? 'Locked' : 'Unlocked'}
                       </button>
 
-                      <button 
+                      <button
                         className={`vd-act-btn ${isBuzzerActive ? 'active' : ''}`}
                         onClick={() => {
                           setIsBuzzerActive(true);
-                          triggerToast('Buzzer sound sent to vehicle horn! 🔔');
+                          triggerToast('Buzzer sound sent to vehicle horn');
                           setTimeout(() => setIsBuzzerActive(false), 2500);
                         }}
                       >
@@ -1152,15 +1160,33 @@ function VehicleDetailContent() {
                         {isBuzzerActive ? 'Beeping...' : 'Buzzer'}
                       </button>
 
-                      <button 
+                      <button
                         className={`vd-act-btn ${isImmobilized ? 'danger' : ''}`}
                         onClick={() => {
-                          setIsImmobilized(!isImmobilized);
-                          triggerToast(isImmobilized ? 'Engine Cutoff disabled' : 'Engine Cutoff Activated!');
+                          setRemoteResult('');
+                          setOperatorPin('');
+                          setConfirmToken('');
+                          setRemoteModal({
+                            action: isImmobilized ? 'enable_ignition' : 'immobilize',
+                            label: isImmobilized ? 'Enable Ignition' : 'Ignition Cut / Immobilize',
+                          });
                         }}
                       >
                         <IPower />
                         {isImmobilized ? 'Immobilized' : 'Cut-off'}
+                      </button>
+
+                      <button
+                        className="vd-act-btn"
+                        onClick={() => {
+                          setRemoteResult('');
+                          setOperatorPin('');
+                          setConfirmToken('');
+                          setRemoteModal({ action: 'battery_release', label: 'Battery Compartment Release' });
+                        }}
+                      >
+                        <IUnlock />
+                        Battery Release
                       </button>
 
                       <button className="vd-act-btn" onClick={() => setIsZoneModalOpen(true)}>
@@ -1168,6 +1194,80 @@ function VehicleDetailContent() {
                         Change Zone
                       </button>
                     </div>
+
+                    {remoteModal ? (
+                      <div style={{ marginTop: 12, border: '1px solid #E2E8F0', borderRadius: 12, padding: 12, background: '#F8FAFC' }}>
+                        <div style={{ fontWeight: 800, marginBottom: 6 }}>Confirm remote action</div>
+                        <div style={{ fontSize: 12, color: '#64748B', marginBottom: 10 }}>
+                          Target vehicle <strong>{codeParam}</strong> · Action <strong>{remoteModal.label}</strong>
+                        </div>
+                        {!confirmToken ? (
+                          <button
+                            className="vd-act-btn active"
+                            disabled={remoteBusy}
+                            onClick={async () => {
+                              if (!codeParam) return;
+                              setRemoteBusy(true);
+                              try {
+                                const res = await api.post(`/vehicles/${codeParam}/commands/request`, { action: remoteModal.action });
+                                setConfirmToken(res.data?.confirm_token || '');
+                                triggerToast('Confirmation token issued — enter operator PIN');
+                              } catch (e: any) {
+                                triggerToast(e.message || 'Request failed');
+                              } finally {
+                                setRemoteBusy(false);
+                              }
+                            }}
+                          >
+                            Step 1 · Request confirmation
+                          </button>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <input
+                              type="password"
+                              inputMode="numeric"
+                              placeholder="Operator PIN"
+                              value={operatorPin}
+                              onChange={(e) => setOperatorPin(e.target.value)}
+                              style={{ border: '1.5px solid #E2E8F0', borderRadius: 8, padding: '8px 10px', width: 140 }}
+                            />
+                            <button
+                              className="vd-act-btn active"
+                              disabled={remoteBusy || operatorPin.length < 4}
+                              onClick={async () => {
+                                if (!codeParam) return;
+                                setRemoteBusy(true);
+                                try {
+                                  const res = await api.post(`/vehicles/${codeParam}/commands/confirm`, {
+                                    action: remoteModal.action,
+                                    confirm_token: confirmToken,
+                                    pin: operatorPin,
+                                  });
+                                  const result = res.data?.result || 'unknown';
+                                  setRemoteResult(`${result}: ${res.data?.message || ''}`);
+                                  if (result === 'success') {
+                                    if (remoteModal.action === 'lock') setIsLocked(true);
+                                    if (remoteModal.action === 'unlock') setIsLocked(false);
+                                    if (remoteModal.action === 'immobilize') setIsImmobilized(true);
+                                    if (remoteModal.action === 'enable_ignition') setIsImmobilized(false);
+                                  }
+                                  triggerToast(`Remote command ${result}`);
+                                } catch (e: any) {
+                                  setRemoteResult(e.message || 'Confirm failed');
+                                  triggerToast(e.message || 'Confirm failed');
+                                } finally {
+                                  setRemoteBusy(false);
+                                }
+                              }}
+                            >
+                              Step 2 · Confirm with PIN
+                            </button>
+                            <button className="vd-act-btn" onClick={() => setRemoteModal(null)}>Cancel</button>
+                          </div>
+                        )}
+                        {remoteResult ? <div style={{ marginTop: 8, fontSize: 12, color: '#334155' }}>{remoteResult}</div> : null}
+                      </div>
+                    ) : null}
 
                     <div style={{ marginTop: 8, borderTop: '1px solid #F1F5F9', paddingTop: 10 }}>
                       <Link 
