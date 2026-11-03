@@ -2,6 +2,112 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { getCache, setCache, delByPattern } = require('../redis');
+const { validatePolygon, polygonsLikelyOverlap, pointInPolygon } = require('../utils/geo');
+
+// ZONE-01 — validate boundary / no-parking geometry before save
+router.post('/geometry/validate', async (req, res) => {
+  try {
+    const { boundary = [], no_parking = [], exclude_zone_id = null } = req.body || {};
+    const boundaryCheck = validatePolygon(boundary, { kind: 'boundary' });
+    const npChecks = (Array.isArray(no_parking) ? no_parking : []).map((poly, idx) => ({
+      index: idx,
+      ...validatePolygon(poly, { kind: `no-parking[${idx}]` }),
+    }));
+
+    const issues = [...boundaryCheck.issues];
+    npChecks.forEach((c) => issues.push(...c.issues.map((i) => ({ ...i, no_parking_index: c.index }))));
+
+    // Overlap vs existing zones
+    const overlaps = [];
+    try {
+      const existing = await db.query('SELECT id, name, points FROM zones');
+      for (const z of existing.rows) {
+        if (exclude_zone_id && String(z.id) === String(exclude_zone_id)) continue;
+        let pts = [];
+        try {
+          pts = Array.isArray(z.points) ? z.points : JSON.parse(z.points || '[]');
+        } catch (_) {}
+        if (polygonsLikelyOverlap(boundary, pts)) {
+          overlaps.push({ zone_id: z.id, zone_name: z.name, message: `Boundary overlaps existing zone "${z.name}"` });
+        }
+      }
+    } catch (_) {}
+
+    // No-parking rings must sit inside boundary when boundary exists
+    if (boundaryCheck.valid) {
+      (Array.isArray(no_parking) ? no_parking : []).forEach((poly, idx) => {
+        if (!Array.isArray(poly) || !poly.length) return;
+        const outside = poly.some((p) => !pointInPolygon(p, boundary));
+        if (outside) {
+          issues.push({
+            code: 'NO_PARKING_OUTSIDE',
+            message: `No-parking polygon ${idx + 1} has points outside the zone boundary`,
+          });
+        }
+      });
+    }
+
+    overlaps.forEach((o) => issues.push({ code: 'OVERLAP', message: o.message, zone_id: o.zone_id }));
+
+    res.json({
+      status: 'success',
+      data: {
+        valid: issues.length === 0,
+        boundary_valid: boundaryCheck.valid,
+        no_parking_valid: npChecks.every((c) => c.valid),
+        overlaps,
+        issues,
+        explanation:
+          issues.length === 0
+            ? 'Geometry is valid and ready to save.'
+            : 'Fix invalid or overlapping geometry before publishing this zone.',
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// ZONE-01 — identify vehicles that crossed an assigned boundary
+router.get('/breaches', async (req, res) => {
+  try {
+    const zonesRes = await db.query('SELECT id, name, points FROM zones');
+    const vehiclesRes = await db.query(
+      `SELECT code, zone, lat, lng, vehicle_status, last_seen FROM vehicles WHERE lat IS NOT NULL AND lng IS NOT NULL LIMIT 2000`
+    );
+    const breaches = [];
+    for (const z of zonesRes.rows) {
+      let pts = [];
+      try {
+        pts = Array.isArray(z.points) ? z.points : JSON.parse(z.points || '[]');
+      } catch (_) {}
+      if (pts.length < 3) continue;
+      for (const v of vehiclesRes.rows) {
+        const assigned = (v.zone || '').toLowerCase();
+        const zname = (z.name || '').toLowerCase();
+        if (!assigned || (!assigned.includes(zname.split(' ')[0]) && assigned !== zname)) continue;
+        const inside = pointInPolygon({ lat: Number(v.lat), lng: Number(v.lng) }, pts);
+        if (!inside) {
+          breaches.push({
+            vehicle_code: v.code,
+            assigned_zone: v.zone,
+            zone_id: z.id,
+            zone_name: z.name,
+            lat: Number(v.lat),
+            lng: Number(v.lng),
+            vehicle_status: v.vehicle_status,
+            last_seen: v.last_seen,
+            alert: 'Vehicle outside assigned zone boundary',
+          });
+        }
+      }
+    }
+    res.json({ status: 'success', data: breaches, count: breaches.length, checked_at: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
 
 // Ensure zone schema columns exist
 (async () => {

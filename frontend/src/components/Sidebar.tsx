@@ -87,6 +87,7 @@ const NAV: NavGroup[] = [
       { label: 'Vehicle Models', href: '/vehicles/models' },
       { label: 'Map', href: '/vehicles/map' },
       { label: 'Document Expiry', href: '/vehicles/documents' },
+      { label: 'Bulk Import / Export', href: '/vehicles/import' },
       { label: 'Active Rides', href: '/vehicles/active' },
       { label: 'History', href: '/vehicles/history' },
     ]
@@ -95,12 +96,14 @@ const NAV: NavGroup[] = [
     key: 'renters', icon: 'renter', label: 'Riders', children: [
       { label: 'Riders List', href: '/renters' },
       { label: 'KYC Review', href: '/renters/kyc-review' },
+      { label: 'Rider 360', href: '/renters/360' },
       { label: 'Reserved Rides', href: '/renters/reserved' },
     ]
   },
   {
     key: 'zone', icon: 'zone', label: 'Zone Management', children: [
       { label: 'Zone List', href: '/zones' },
+      { label: 'Geofence Tools', href: '/zones/geofence' },
       { label: 'Zone Pricing', href: '/zones/pricing' },
       { label: 'Assign Zone', href: '/zones/assign' },
     ]
@@ -210,6 +213,7 @@ const SUPER_ADMIN_NAV: NavGroup[] = [
       { label: 'Vehicle Models', href: '/vehicles/models' },
       { label: 'Map', href: '/vehicles/map' },
       { label: 'Document Expiry', href: '/vehicles/documents' },
+      { label: 'Bulk Import / Export', href: '/vehicles/import' },
       { label: 'Active Rides', href: '/vehicles/active' },
       { label: 'History', href: '/vehicles/history' },
       { label: 'Vehicle Details', href: '/vehicles/detail' },
@@ -219,12 +223,14 @@ const SUPER_ADMIN_NAV: NavGroup[] = [
     key: 'renters', icon: 'renter', label: 'Riders', children: [
       { label: 'Riders List', href: '/renters' },
       { label: 'KYC Review', href: '/renters/kyc-review' },
+      { label: 'Rider 360', href: '/renters/360' },
       { label: 'Reserved Rides', href: '/renters/reserved' },
     ]
   },
   {
     key: 'zone', icon: 'zone', label: 'Zone Management', children: [
       { label: 'Zone List', href: '/zones' },
+      { label: 'Geofence Tools', href: '/zones/geofence' },
       { label: 'Zone Pricing', href: '/zones/pricing' },
       { label: 'Assign Zone', href: '/zones/assign' },
     ]

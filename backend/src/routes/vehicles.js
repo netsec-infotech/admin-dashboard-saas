@@ -474,24 +474,64 @@ router.get('/sample-excel', (req, res) => {
 // BULK IMPORT VEHICLES
 // POST /api/vehicles/bulk-import
 // ============================================================
-function parseExcelOrStrDate(val) {
-  if (!val || val === 'NA' || val === 'N/A' || val === '-') return null;
-  if (typeof val === 'number') {
-    const utcDays = val - 25569;
-    const date = new Date(Math.round(utcDays * 86400 * 1000));
-    return isNaN(date.getTime()) ? null : date.toISOString().split('T')[0];
+const { parseExcelOrStrDate, validateVehicleImportRows } = require('../utils/vehicleImport');
+
+// FLEET-04 preview — validate only, never writes
+router.post('/bulk-import/preview', async (req, res) => {
+  try {
+    const { vehicles, allow_update = false } = req.body || {};
+    if (!Array.isArray(vehicles) || vehicles.length === 0) {
+      return res.status(400).json({ status: 'error', message: 'No vehicles provided for preview' });
+    }
+    const report = await validateVehicleImportRows(db, vehicles, { allowUpdate: !!allow_update });
+    return res.json({
+      status: 'success',
+      data: {
+        total: report.total,
+        valid_count: report.valid_count,
+        invalid_count: report.invalid_count,
+        rows: report.rows.map((r) => ({
+          row: r.row,
+          valid: r.valid,
+          exists_in_db: !!r.exists_in_db,
+          code: r.normalized.code,
+          model: r.normalized.modelName,
+          zone: r.normalized.zone,
+          field_errors: r.field_errors,
+        })),
+        summary: `${report.valid_count} valid / ${report.invalid_count} invalid — invalid rows will not be imported`,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ status: 'error', message: err.message });
   }
-  const s = String(val).trim();
-  if (!s || s.toLowerCase() === 'na') return null;
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
-}
+});
 
 router.post('/bulk-import', async (req, res) => {
   try {
-    const { vehicles } = req.body || {};
+    const { vehicles, allow_update = false, force_partial = false } = req.body || {};
     if (!Array.isArray(vehicles) || vehicles.length === 0) {
       return res.status(400).json({ status: 'error', message: 'No vehicles provided for bulk import' });
+    }
+
+    const report = await validateVehicleImportRows(db, vehicles, { allowUpdate: !!allow_update });
+    // Never silently create partial/duplicate fleets unless explicitly forced (tests/admin override)
+    if (report.invalid_count > 0 && !force_partial) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'IMPORT_VALIDATION_FAILED',
+        message: 'Import blocked: invalid or duplicate rows present. Fix field-level errors and preview again.',
+        data: {
+          total: report.total,
+          valid_count: report.valid_count,
+          invalid_count: report.invalid_count,
+          invalid_rows: report.invalid_rows.map((r) => ({
+            row: r.row,
+            code: r.normalized.code,
+            field_errors: r.field_errors,
+          })),
+        },
+      });
     }
 
     let inserted = 0;
@@ -510,8 +550,10 @@ router.post('/bulk-import', async (req, res) => {
       }
     } catch (_) {}
 
-    for (let i = 0; i < vehicles.length; i++) {
-      const v = vehicles[i];
+    const toImport = force_partial ? report.valid_rows.map((r) => vehicles[r.row - 1]) : vehicles;
+
+    for (let i = 0; i < toImport.length; i++) {
+      const v = toImport[i];
       const code = String(
         v.code ||
         v['Vehicle Code*'] ||
@@ -1304,6 +1346,19 @@ router.get('/:code', async (req, res) => {
   const { code } = req.params;
 
   try {
+    // SEC-01 — block cross-tenant object link access when scoped JWT present
+    if (req.headers.authorization || req.headers['x-api-key']) {
+      try {
+        const { authenticate } = require('../middleware/auth');
+        const { assertVehicleInScope } = require('../middleware/tenantScope');
+        await new Promise((resolve, reject) => authenticate(req, res, (err) => (err ? reject(err) : resolve())));
+        const scope = await assertVehicleInScope(req, code);
+        if (!scope.ok) {
+          return res.status(scope.status || 403).json({ status: 'error', code: 'TENANT_MISMATCH', message: scope.message });
+        }
+      } catch (_) {}
+    }
+
     const result = await db.query(
       `
       SELECT 

@@ -31,6 +31,10 @@ function normalizeMediaUrl(url) {
     await db.query('ALTER TABLE renters ADD COLUMN IF NOT EXISTS emergency_contact_name VARCHAR(150)');
     await db.query('ALTER TABLE renters ADD COLUMN IF NOT EXISTS emergency_contact_phone VARCHAR(50)');
     await db.query("ALTER TABLE renters ADD COLUMN IF NOT EXISTS booking_source VARCHAR(50) DEFAULT 'App'");
+    // KYC-03 restriction fields (must exist before booking/extend enforcement)
+    await db.query('ALTER TABLE renters ADD COLUMN IF NOT EXISTS restriction_reason VARCHAR(80)').catch(() => {});
+    await db.query('ALTER TABLE renters ADD COLUMN IF NOT EXISTS restriction_notes TEXT').catch(() => {});
+    await db.query('ALTER TABLE renters ADD COLUMN IF NOT EXISTS restricted_at TIMESTAMPTZ').catch(() => {});
     // Create indexes for instant querying
     await db.query('CREATE INDEX IF NOT EXISTS idx_renters_mobile ON renters (mobile)').catch(() => {});
     await db.query('CREATE INDEX IF NOT EXISTS idx_reservations_mobile ON reservations (mobile)').catch(() => {});
@@ -1298,6 +1302,20 @@ router.post('/', async (req, res) => {
   const last10 = cleanMobile.length >= 10 ? cleanMobile.slice(-10) : cleanMobile;
 
   try {
+    // KYC-03 — blocked riders cannot start/retain bookings
+    const activating = ['Active', 'Active Ride', 'Ongoing', 'Retain Ride', 'In Ride'].includes(String(status || ''));
+    if (activating || vehicle_id) {
+      const { assertRiderBookable } = require('../middleware/tenantScope');
+      const bookable = await assertRiderBookable(last10 || id || mobile);
+      if (!bookable.ok) {
+        return res.status(bookable.status || 403).json({
+          status: 'error',
+          code: bookable.code || 'RIDER_RESTRICTED',
+          message: bookable.message,
+        });
+      }
+    }
+
     // Check if renter with this id or mobile exists
     let checkRes = { rows: [] };
     if (id) {
@@ -2450,6 +2468,17 @@ router.post('/:id/restrictions', async (req, res) => {
 router.get('/:id/360', async (req, res) => {
   try {
     const id = req.params.id;
+    if (req.headers.authorization || req.headers['x-api-key']) {
+      try {
+        const { authenticate } = require('../middleware/auth');
+        const { assertRiderInScope } = require('../middleware/tenantScope');
+        await new Promise((resolve, reject) => authenticate(req, res, (err) => (err ? reject(err) : resolve())));
+        const scope = await assertRiderInScope(req, id);
+        if (!scope.ok) {
+          return res.status(scope.status || 403).json({ status: 'error', code: 'TENANT_MISMATCH', message: scope.message });
+        }
+      } catch (_) {}
+    }
     const riderRes = await db.query(
       `SELECT * FROM renters WHERE id::text = $1 OR mobile LIKE $2 ORDER BY id DESC LIMIT 1`,
       [id, `%${String(id).replace(/\D/g, '').slice(-10)}%`]

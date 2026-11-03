@@ -1,0 +1,1 @@
+{"status":"error","code":"RATE_LIMITED","message":"Too many authentication attempts. Wait one minute and retry.","retry_after_seconds":60}

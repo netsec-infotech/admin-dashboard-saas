@@ -398,13 +398,50 @@ router.post('/return', async (req, res) => {
       }
     }
     const overdueMins = Number(overdue_minutes || 0);
-    // Hourly overdue assessment — idempotent per request payload
-    const overdueCharge = Number(((Math.ceil(overdueMins / 60) || 0) * 50).toFixed(2));
+    // Hourly overdue assessment — each whole hour billed once; retries cannot duplicate
+    const overdueHours = Math.max(0, Math.ceil(overdueMins / 60) || 0);
+    let overdueCharge = Number((overdueHours * 50).toFixed(2));
     const damageCharge = Number(parseFloat(damage_cost) || 0);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS overdue_assessments (
+        id SERIAL PRIMARY KEY,
+        mobile VARCHAR(20) NOT NULL,
+        vehicle_id VARCHAR(100),
+        hour_bucket INT NOT NULL,
+        amount DECIMAL(12,2) NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(mobile, vehicle_id, hour_bucket)
+      )
+    `).catch(() => {});
+
+    const assessedHours = [];
+    for (let h = 1; h <= overdueHours; h++) {
+      const ins = await db.query(
+        `
+        INSERT INTO overdue_assessments (mobile, vehicle_id, hour_bucket, amount)
+        VALUES ($1,$2,$3,50)
+        ON CONFLICT (mobile, vehicle_id, hour_bucket) DO NOTHING
+        RETURNING hour_bucket
+        `,
+        [cleanMob || 'unknown', vehicle_id || 'unknown', h]
+      ).catch(() => ({ rows: [] }));
+      if (ins.rows?.length) assessedHours.push(h);
+    }
+    // Only charge newly assessed hours on retry
+    overdueCharge = Number((assessedHours.length * 50).toFixed(2));
+
     const items = Array.isArray(line_items) && line_items.length
       ? line_items
       : [
-          ...(overdueCharge ? [{ code: 'overdue', label: 'Overdue rental', amount: overdueCharge, interval_minutes: overdueMins }] : []),
+          ...(overdueCharge ? [{
+            code: 'overdue',
+            label: 'Overdue rental',
+            amount: overdueCharge,
+            interval_minutes: overdueMins,
+            hours_billed: assessedHours,
+            skipped_duplicate_hours: overdueHours - assessedHours.length,
+          }] : []),
           ...(damageCharge ? [{ code: 'damage', label: damage_category || 'Damage', amount: damageCharge }] : []),
         ];
     const totalCharges = items.reduce((s, i) => s + Number(i.amount || 0), 0);
@@ -818,7 +855,9 @@ router.post('/extend', async (req, res) => {
       payment_method = 'payu',
       transaction_id,
       reason,
-      notes
+      notes,
+      payment_status = null,
+      preview_only = false,
     } = req.body;
 
     const cleanMob = (mobile || '').replace(/\D/g, '').slice(-10);
@@ -838,13 +877,67 @@ router.post('/extend', async (req, res) => {
     const resolvedName = (rider_name || renter?.rider_name || 'Rider').trim();
     const resolvedVeh = vehicle_id || renter?.vehicle_id || 'EV-ALLOCATED';
 
+    // KYC-03 — blocked riders cannot extend
+    if (renter && (String(renter.status || '').toLowerCase() === 'suspended' || renter.restriction_reason)) {
+      return res.status(403).json({
+        status: 'error',
+        code: 'RIDER_RESTRICTED',
+        message: `Rider is restricted (${renter.restriction_reason || 'suspended'}). Extension denied.`,
+      });
+    }
+
+    const method = String(payment_method || '').toLowerCase();
+    const payStatus = String(payment_status || '').toLowerCase();
+
+    // RIDE-02 — show revised return/price before confirm when preview_only
+    const currentReturn = renter?.return_date ? new Date(renter.return_date) : new Date();
+    const addDaysPreview = parseInt(extension_days || 0, 10);
+    const addHoursPreview = parseInt(extension_hours || 0, 10);
+    let previewReturn = new Date(currentReturn.getTime());
+    if (addDaysPreview > 0) previewReturn.setDate(previewReturn.getDate() + addDaysPreview);
+    else if (addHoursPreview > 0) previewReturn.setTime(previewReturn.getTime() + addHoursPreview * 3600000);
+    else previewReturn.setDate(previewReturn.getDate() + 1);
+
+    if (preview_only) {
+      return res.json({
+        status: 'success',
+        data: {
+          preview: true,
+          revised_return_time: previewReturn.toISOString(),
+          additional_fare: addAmt,
+          payment_method: payment_method || 'PayU',
+        },
+        message: 'Confirm payment collection before extending the ride.',
+      });
+    }
+
+    // RIDE-02 — failed collection must not silently extend
+    if (payStatus === 'failed' || payStatus === 'failure') {
+      return res.status(402).json({
+        status: 'error',
+        code: 'PAYMENT_FAILED',
+        message: 'Payment collection failed. Ride was not extended.',
+      });
+    }
+
+    if (method === 'payu' || method === 'phonepe' || method === 'gateway') {
+      if (!transaction_id && payStatus !== 'success' && payStatus !== 'paid') {
+        return res.status(402).json({
+          status: 'error',
+          code: 'PAYMENT_REQUIRED',
+          message: 'Upfront payment required before ride extension. Failed or missing collection does not extend the ride.',
+        });
+      }
+    }
+
     // 2. Handle Wallet Payment method
-    if (String(payment_method).toLowerCase() === 'wallet') {
+    if (method === 'wallet') {
       const currentBalance = parseFloat(renter?.wallet_balance || 0);
       if (currentBalance < addAmt) {
         return res.status(400).json({
           status: 'error',
-          message: `Insufficient wallet balance (₹${currentBalance.toFixed(2)}). Please add money or choose PayU.`
+          code: 'PAYMENT_FAILED',
+          message: `Insufficient wallet balance (₹${currentBalance.toFixed(2)}). Ride was not extended.`,
         });
       }
 
@@ -872,18 +965,9 @@ router.post('/extend', async (req, res) => {
     }
 
     // 3. Compute New Return Date
-    const currentReturn = renter?.return_date ? new Date(renter.return_date) : new Date();
     const addDays = parseInt(extension_days || 0, 10);
     const addHours = parseInt(extension_hours || 0, 10);
-
-    let newReturnDate = new Date(currentReturn.getTime());
-    if (addDays > 0) {
-      newReturnDate.setDate(newReturnDate.getDate() + addDays);
-    } else if (addHours > 0) {
-      newReturnDate.setTime(newReturnDate.getTime() + addHours * 60 * 60 * 1000);
-    } else {
-      newReturnDate.setDate(newReturnDate.getDate() + 1);
-    }
+    let newReturnDate = new Date(previewReturn.getTime());
 
     const isCash = String(payment_method || '').toLowerCase().includes('cash');
     let cashVoucher = req.body.cash_voucher_number || null;

@@ -1,0 +1,30 @@
+=== Evegah v1.5 acceptance suite ===
+
+[PASS] FLEET-04 preview returns 200
+[PASS] FLEET-04 preview flags invalid/duplicate rows
+[PASS] FLEET-04 commit blocked when invalid rows present
+[PASS] FLEET-04 returns IMPORT_VALIDATION_FAILED
+[PASS] RIDE-01 return succeeds
+[PASS] RIDE-01 first overdue assessment charges 3 hours (₹150)
+[PASS] RIDE-01 GPS sanity flags implausible odometer
+[PASS] RIDE-01 retry does not double-charge overdue hours
+[PASS] RIDE-02 failed payment returns 402
+[PASS] RIDE-02 code PAYMENT_FAILED
+[PASS] RIDE-02 missing gateway payment blocked
+[PASS] PAY-01 first webhook accepted
+[PASS] PAY-01 duplicate webhook ignored
+[ReconciliationCron] Completed run #5 (test:manual)
+[PASS] PAY-01 reconciliation run records an id
+[PASS] PAY-01 next 02:00 Asia/Kolkata delay is positive
+[PASS] PAY-02 over-refund rejected
+[PASS] PAY-02 REFUND_EXCEEDS_BALANCE
+[PASS] PAY-02 valid refund succeeds
+[PASS] PAY-02 duplicate refund blocked after first success
+[PASS] SEC-01 scoped vehicle access evaluated
+[PASS] SEC-01 TENANT_MISMATCH on out-of-scope vehicle
+[PASS] KYC-03 restricted rider cannot book
+[PASS] KYC-03 RIDER_RESTRICTED code
+[PASS] ZONE-01 invalid self-intersecting polygon rejected
+[PASS] ZONE-01 explains SELF_INTERSECTION
+
+=== RESULT: 25 passed, 0 failed ===

@@ -374,4 +374,12 @@ app.listen(PORT, () => {
   } catch (err) {
     console.error('Could not start Ride Alerts Cron:', err.message);
   }
+
+  // PAY-01 daily reconciliation at 02:00 Asia/Kolkata
+  try {
+    const { startReconciliationCron } = require('./cron/reconciliationCron');
+    startReconciliationCron();
+  } catch (err) {
+    console.error('Could not start Reconciliation Cron:', err.message);
+  }
 });

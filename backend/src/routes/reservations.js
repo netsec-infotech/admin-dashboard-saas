@@ -629,6 +629,26 @@ router.post('/', async (req, res) => {
 
   const cleanMobile = (mobile || '').replace(/\D/g, '');
 
+  // KYC-03 — enforce restriction on booking
+  try {
+    const { assertRiderBookable } = require('../middleware/tenantScope');
+    const bookable = await assertRiderBookable(cleanMobile || mobile);
+    if (!bookable.ok) {
+      return res.status(bookable.status || 403).json({
+        status: 'error',
+        code: bookable.code || 'RIDER_RESTRICTED',
+        message: bookable.message,
+      });
+    }
+  } catch (restrictErr) {
+    console.error('KYC-03 bookable check failed:', restrictErr.message);
+    return res.status(500).json({
+      status: 'error',
+      code: 'RESTRICTION_CHECK_FAILED',
+      message: 'Unable to verify rider restrictions before booking',
+    });
+  }
+
   const reqStartRaw = req.body.pickup_datetime || req.body.start_datetime || `${reservation_date || ''} ${reservation_time || ''}`.trim();
   const reqEndRaw = req.body.drop_datetime || req.body.end_datetime || reqStartRaw;
 
@@ -1195,7 +1215,8 @@ router.post('/:id/refund-deposit', async (req, res) => {
     refund_amount,
     deductions = 0,
     notes = '',
-    method
+    method,
+    idempotency_key = null,
   } = req.body;
 
   const refundAmt = parseFloat(refund_amount || 0);
@@ -1203,6 +1224,18 @@ router.post('/:id/refund-deposit', async (req, res) => {
   const refTxId = `REF-${Date.now().toString().slice(-8)}`;
 
   try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS refund_idempotency (
+        id SERIAL PRIMARY KEY,
+        reservation_key VARCHAR(150) NOT NULL,
+        idempotency_key VARCHAR(200) NOT NULL,
+        refund_amount DECIMAL(12,2),
+        result JSONB,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(reservation_key, idempotency_key)
+      )
+    `).catch(() => {});
+
     let target = null;
     let isFromRenters = false;
     try {
@@ -1230,6 +1263,55 @@ router.post('/:id/refund-deposit', async (req, res) => {
       return res.status(404).json({
         status: 'error',
         message: `Ride reservation or rental record (${id}) not found.`
+      });
+    }
+
+    // PAY-02 — already refunded / duplicate submission
+    // Pending_Refund means eligible to refund; only completed refund states block duplicates
+    const depositStatus = String(target.deposit_status || '').toLowerCase().replace(/[\s_-]+/g, '');
+    const alreadyRefunded =
+      depositStatus === 'refunded' ||
+      depositStatus === 'partiallyrefunded' ||
+      depositStatus === 'refundcomplete' ||
+      depositStatus === 'refundedpartial';
+    if (alreadyRefunded) {
+      return res.status(409).json({
+        status: 'error',
+        code: 'DUPLICATE_REFUND',
+        message: 'Refund already processed for this deposit. Duplicate submissions are blocked.',
+      });
+    }
+
+    if (idempotency_key) {
+      const prior = await db.query(
+        `SELECT result FROM refund_idempotency WHERE reservation_key = $1 AND idempotency_key = $2`,
+        [String(id), String(idempotency_key)]
+      ).catch(() => ({ rows: [] }));
+      if (prior.rows.length) {
+        return res.status(409).json({
+          status: 'error',
+          code: 'DUPLICATE_REFUND',
+          message: 'Duplicate refund submission blocked by idempotency key.',
+          data: prior.rows[0].result,
+        });
+      }
+    }
+
+    const depositHeld = parseFloat(target.deposit || 0);
+    const priorRefundPaid = parseFloat(target.refund_amount || 0);
+    const deductions = parseFloat(target.refund_deductions || 0);
+    // Prefer deposit as refundable balance when still held / pending refund
+    const maxRefundable = Math.max(0, depositHeld - deductions - (alreadyRefunded ? priorRefundPaid : 0));
+
+    if (refundAmt <= 0) {
+      return res.status(400).json({ status: 'error', message: 'Refund amount must be greater than zero' });
+    }
+    if (refundAmt > maxRefundable + 0.001) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'REFUND_EXCEEDS_BALANCE',
+        message: `Refund amount ₹${refundAmt} exceeds refundable balance ₹${maxRefundable.toFixed(2)}`,
+        refundable_balance: maxRefundable,
       });
     }
 
@@ -1327,19 +1409,31 @@ router.post('/:id/refund-deposit', async (req, res) => {
     await delByPattern('renters:*');
     await delByPattern('stats:*');
 
+    const refundPayload = {
+      tx_id: finalRefundTxId,
+      refund_amount: refundAmt,
+      deductions: dedAmt,
+      refund_mode: resolvedMethod,
+      refund_date: new Date().toISOString(),
+      payu_response: payuResult,
+      status: 'succeeded',
+    };
+
+    if (idempotency_key) {
+      await db.query(
+        `INSERT INTO refund_idempotency (reservation_key, idempotency_key, refund_amount, result)
+         VALUES ($1,$2,$3,$4)
+         ON CONFLICT (reservation_key, idempotency_key) DO NOTHING`,
+        [String(id), String(idempotency_key), refundAmt, JSON.stringify(refundPayload)]
+      ).catch(() => {});
+    }
+
     res.json({
       status: 'success',
       message: (payuResult && payuResult.success)
         ? `Security deposit of ₹${refundAmt} refunded successfully to original source account via PayU Gateway (Request ID: ${finalRefundTxId}).`
         : `Security deposit refund of ₹${refundAmt} processed and settled successfully (Reference ID: ${finalRefundTxId}).`,
-      data: {
-        tx_id: finalRefundTxId,
-        refund_amount: refundAmt,
-        deductions: dedAmt,
-        refund_mode: resolvedMethod,
-        refund_date: new Date().toISOString(),
-        payu_response: payuResult
-      }
+      data: refundPayload
     });
   } catch (err) {
     console.error('Failed to process refund:', err);
