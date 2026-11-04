@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { authLimiter } = require('../middleware/rateLimit');
+const { requireFields } = require('../middleware/validate');
 
 // Ensure users table and columns exist in Postgres
 (async () => {
@@ -38,7 +40,7 @@ const MOCK_USERS = [
 ];
 
 // POST /api/users/login — Secure Role & Zone Based Login for Authorized Users
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, requireFields(['email', 'password']), async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {

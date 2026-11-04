@@ -77,6 +77,7 @@ const NAV: NavGroup[] = [
       { label: 'Retain Ride', href: '/retain-rider' },
       { label: 'Return Ride', href: '/return-ride' },
       { label: 'Extend Ride', href: '/extend-ride' },
+      { label: 'SOS Queue', href: '/ride-operations/sos' },
       { label: 'Franchise Users', href: '/franchise-users' },
     ]
   },
@@ -85,6 +86,8 @@ const NAV: NavGroup[] = [
       { label: 'Vehicle List', href: '/vehicles/all' },
       { label: 'Vehicle Models', href: '/vehicles/models' },
       { label: 'Map', href: '/vehicles/map' },
+      { label: 'Document Expiry', href: '/vehicles/documents' },
+      { label: 'Bulk Import / Export', href: '/vehicles/import' },
       { label: 'Active Rides', href: '/vehicles/active' },
       { label: 'History', href: '/vehicles/history' },
     ]
@@ -92,12 +95,15 @@ const NAV: NavGroup[] = [
   {
     key: 'renters', icon: 'renter', label: 'Riders', children: [
       { label: 'Riders List', href: '/renters' },
+      { label: 'KYC Review', href: '/renters/kyc-review' },
+      { label: 'Rider 360', href: '/renters/360' },
       { label: 'Reserved Rides', href: '/renters/reserved' },
     ]
   },
   {
     key: 'zone', icon: 'zone', label: 'Zone Management', children: [
       { label: 'Zone List', href: '/zones' },
+      { label: 'Geofence Tools', href: '/zones/geofence' },
       { label: 'Zone Pricing', href: '/zones/pricing' },
       { label: 'Assign Zone', href: '/zones/assign' },
     ]
@@ -106,6 +112,7 @@ const NAV: NavGroup[] = [
     key: 'franchise', icon: 'franchise', label: 'Franchise', children: [
       { label: 'Franchise List', href: '/franchise/list' },
       { label: 'Franchise Detail', href: '/franchise/detail' },
+      { label: 'Settlements', href: '/franchise/settlements' },
       { label: 'Franchise Onboarding', href: '/super-admin/franchise-onboarding' },
       { label: 'Subscriptions', href: '/super-admin/subscriptions' },
       { label: 'White Label Settings', href: '/super-admin/white-label' },
@@ -114,6 +121,7 @@ const NAV: NavGroup[] = [
       { label: 'White Label Config', href: '/franchise/white-label' },
     ]
   },
+
   {
     key: 'usersrole', icon: 'usersrole', label: 'Users & Roles', children: [
       { label: 'Users', href: '/users' },
@@ -127,6 +135,8 @@ const NAV: NavGroup[] = [
       { label: 'Battery Inventory', href: '/battery/inventory' },
       { label: 'Battery Inward', href: '/battery/inward' },
       { label: 'Battery Swap', href: '/battery-swap' },
+      { label: 'Swap Stations', href: '/battery/swap-stations' },
+      { label: 'Battery Health', href: '/battery/health' },
       { label: 'Battery List', href: '/battery/list' },
       { label: 'Swap History', href: '/battery/swap-history' },
     ]
@@ -152,6 +162,8 @@ const NAV: NavGroup[] = [
       { label: 'Payment Users', href: '/payment' },
       { label: 'Payment History', href: '/payment/history' },
       { label: 'Deposit Refunds', href: '/payment/refund' },
+      { label: 'Reconciliation', href: '/payment/reconciliation' },
+      { label: 'GST Invoices', href: '/payment/invoices' },
       { label: 'Coupons', href: '/payment/coupons' },
       { label: 'Franchise Transactions', href: '/franchise/transactions' },
     ]
@@ -162,6 +174,7 @@ const NAV: NavGroup[] = [
   { key: 'reports', icon: 'reports', label: 'Reports', href: '/reports' },
   { key: 'alerts', icon: 'alerts', label: 'Alerts', href: '/alerts' },
   { key: 'announcements', icon: 'announcements', label: 'Announcements', href: '/announcements' },
+  { key: 'messaging', icon: 'announcements', label: 'Messaging', href: '/messaging' },
   { key: 'co2', icon: 'co2', label: 'Co2 Saving', href: '/co2-saving' },
   {
     key: 'settings', icon: 'settings', label: 'Settings', children: [
@@ -173,6 +186,8 @@ const NAV: NavGroup[] = [
       { label: 'Documents', href: '/settings/documents' },
       { label: 'Reserved Rides', href: '/settings/reserved-rides' },
       { label: 'Audit Logs', href: '/settings/audit-logs' },
+      { label: 'Data & Backups', href: '/settings/data' },
+      { label: 'Custom Domains', href: '/settings/domains' },
       { label: 'White Label', href: '/settings/white-label' },
     ]
   },
@@ -188,6 +203,7 @@ const SUPER_ADMIN_NAV: NavGroup[] = [
       { label: 'Retain Ride', href: '/retain-rider' },
       { label: 'Return Ride', href: '/return-ride' },
       { label: 'Extend Ride', href: '/extend-ride' },
+      { label: 'SOS Queue', href: '/ride-operations/sos' },
       { label: 'Franchise Users', href: '/franchise-users' },
     ]
   },
@@ -196,6 +212,8 @@ const SUPER_ADMIN_NAV: NavGroup[] = [
       { label: 'Vehicle List', href: '/vehicles/all' },
       { label: 'Vehicle Models', href: '/vehicles/models' },
       { label: 'Map', href: '/vehicles/map' },
+      { label: 'Document Expiry', href: '/vehicles/documents' },
+      { label: 'Bulk Import / Export', href: '/vehicles/import' },
       { label: 'Active Rides', href: '/vehicles/active' },
       { label: 'History', href: '/vehicles/history' },
       { label: 'Vehicle Details', href: '/vehicles/detail' },
@@ -204,12 +222,15 @@ const SUPER_ADMIN_NAV: NavGroup[] = [
   {
     key: 'renters', icon: 'renter', label: 'Riders', children: [
       { label: 'Riders List', href: '/renters' },
+      { label: 'KYC Review', href: '/renters/kyc-review' },
+      { label: 'Rider 360', href: '/renters/360' },
       { label: 'Reserved Rides', href: '/renters/reserved' },
     ]
   },
   {
     key: 'zone', icon: 'zone', label: 'Zone Management', children: [
       { label: 'Zone List', href: '/zones' },
+      { label: 'Geofence Tools', href: '/zones/geofence' },
       { label: 'Zone Pricing', href: '/zones/pricing' },
       { label: 'Assign Zone', href: '/zones/assign' },
     ]
@@ -218,6 +239,7 @@ const SUPER_ADMIN_NAV: NavGroup[] = [
     key: 'franchise', icon: 'franchise', label: 'Franchise', children: [
       { label: 'Franchise List', href: '/franchise/list' },
       { label: 'Franchise Detail', href: '/franchise/detail' },
+      { label: 'Settlements', href: '/franchise/settlements' },
       { label: 'Franchise Onboarding', href: '/super-admin/franchise-onboarding' },
       { label: 'Subscriptions', href: '/super-admin/subscriptions' },
       { label: 'White Label Settings', href: '/super-admin/white-label' },
@@ -240,6 +262,8 @@ const SUPER_ADMIN_NAV: NavGroup[] = [
       { label: 'Battery Inward', href: '/battery/inward' },
       { label: 'Battery Monitoring', href: '/battery/monitoring' },
       { label: 'Battery Swap', href: '/battery-swap' },
+      { label: 'Swap Stations', href: '/battery/swap-stations' },
+      { label: 'Battery Health', href: '/battery/health' },
       { label: 'Battery List', href: '/battery/list' },
       { label: 'Swap History', href: '/battery/swap-history' },
     ]
@@ -265,6 +289,8 @@ const SUPER_ADMIN_NAV: NavGroup[] = [
       { label: 'Payment Users', href: '/payment' },
       { label: 'Payment History', href: '/payment/history' },
       { label: 'Deposit Refunds', href: '/payment/refund' },
+      { label: 'Reconciliation', href: '/payment/reconciliation' },
+      { label: 'GST Invoices', href: '/payment/invoices' },
       { label: 'Coupons', href: '/payment/coupons' },
       { label: 'Franchise Transactions', href: '/franchise/transactions' },
     ]
@@ -275,11 +301,14 @@ const SUPER_ADMIN_NAV: NavGroup[] = [
   { key: 'reports', icon: 'reports', label: 'Reports', href: '/reports' },
   { key: 'alerts', icon: 'alerts', label: 'Alerts', href: '/alerts' },
   { key: 'announcements', icon: 'announcements', label: 'Announcements', href: '/announcements' },
+  { key: 'messaging', icon: 'announcements', label: 'Messaging', href: '/messaging' },
   { key: 'co2', icon: 'co2', label: 'Co2 Saving', href: '/co2-saving' },
   {
     key: 'settings', icon: 'settings', label: 'Settings', children: [
       { label: 'General Settings', href: '/settings' },
       { label: 'Audit Logs', href: '/settings/audit-logs' },
+      { label: 'Data & Backups', href: '/settings/data' },
+      { label: 'Custom Domains', href: '/settings/domains' },
       { label: 'Documents Settings', href: '/settings/documents' },
       { label: 'White Label Config', href: '/settings/white-label' },
     ]

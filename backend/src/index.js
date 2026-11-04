@@ -6,6 +6,8 @@ validateEnvironment();
 
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 const app = express();
 
 // Middleware
@@ -13,13 +15,12 @@ app.use(cors({
   origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-user-mobile', 'x-requested-with', 'Accept']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-user-mobile', 'x-requested-with', 'Accept', 'x-api-key']
 }));
 app.options('*', cors());
 app.use(express.json({ limit: '150mb' }));
 app.use(express.urlencoded({ limit: '150mb', extended: true }));
 
-const path = require('path');
 app.use('/assets', express.static(path.join(__dirname, '../../frontend/public/assets')));
 app.use('/assets', express.static(path.join(__dirname, '../../frontend/public')));
 // Multi-path static uploads resolution (VPS, root, local dev)
@@ -187,6 +188,7 @@ app.use('/api/zones', require('./routes/zones'));
 app.use('/api/reservations', require('./routes/reservations'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/roles', require('./routes/roles'));
+app.use('/api/vehicles', require('./routes/vehicleRemote'));
 app.use('/api/vehicles', require('./routes/vehicles'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/coupons', require('./routes/coupons'));
@@ -219,6 +221,18 @@ app.use('/api/payments/config', (req, res, next) => {
   req.url = '/config';
   return require('./routes/gateways')(req, res, next);
 });
+
+// Version 1.5 production feature routes
+app.use('/api/reconciliation', require('./routes/reconciliation'));
+app.use('/api/franchise-settlements', require('./routes/franchiseSettlements'));
+app.use('/api/swap-stations', require('./routes/swapStations'));
+app.use('/api/messaging', require('./routes/messaging'));
+app.use('/api/backups', require('./routes/backups'));
+app.use('/api/invoices', require('./routes/invoices'));
+app.use('/api/sos', require('./routes/sos'));
+app.use('/api/domains', require('./routes/domains'));
+app.use('/api/fleet-documents', require('./routes/fleetDocuments'));
+
 
 
 // Helper to identify maintenance service centers
@@ -359,5 +373,13 @@ app.listen(PORT, () => {
     startRideAlertsEngine(60);
   } catch (err) {
     console.error('Could not start Ride Alerts Cron:', err.message);
+  }
+
+  // PAY-01 daily reconciliation at 02:00 Asia/Kolkata
+  try {
+    const { startReconciliationCron } = require('./cron/reconciliationCron');
+    startReconciliationCron();
+  } catch (err) {
+    console.error('Could not start Reconciliation Cron:', err.message);
   }
 });
