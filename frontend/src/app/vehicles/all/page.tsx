@@ -246,30 +246,37 @@ export default function VehicleListPage() {
     reader.readAsArrayBuffer(file);
   };
 
+  const [importPreview, setImportPreview] = useState<any | null>(null);
+
   const handleBulkImport = async () => {
     if (parsedVehicles.length === 0) return;
     setImportLoading(true);
     setImportResult(null);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-      const res = await fetch(`${apiUrl}/vehicles/bulk-import`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vehicles: parsedVehicles }),
+      const preview = await api.post('/vehicles/bulk-import/preview', {
+        vehicles: parsedVehicles,
+        allow_update: false,
       });
-      const data = await res.json();
-      if (res.ok && data.status === 'success') {
-        setImportResult({ success: `Successfully imported: ${data.inserted} added, ${data.updated} updated!` });
-        fetchVehicles();
-        setTimeout(() => {
-          setShowImportModal(false);
-          setImportFile(null);
-          setParsedVehicles([]);
-          setImportResult(null);
-        }, 1800);
-      } else {
-        setImportResult({ error: data.message || 'Import failed' });
+      setImportPreview(preview.data);
+      if ((preview.data?.invalid_count || 0) > 0) {
+        setImportResult({
+          error: `Preview blocked commit: ${preview.data.invalid_count} invalid/duplicate row(s). Fix field-level errors first.`,
+        });
+        return;
       }
+      const data = await api.post('/vehicles/bulk-import', {
+        vehicles: parsedVehicles,
+        allow_update: false,
+      });
+      setImportResult({ success: data.message || `Imported ${data.inserted} added, ${data.updated} updated` });
+      fetchVehicles();
+      setTimeout(() => {
+        setShowImportModal(false);
+        setImportFile(null);
+        setParsedVehicles([]);
+        setImportPreview(null);
+        setImportResult(null);
+      }, 1800);
     } catch (err: any) {
       setImportResult({ error: err.message || 'Failed to submit bulk import' });
     } finally {
